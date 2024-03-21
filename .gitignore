@@ -5,3 +5,4 @@ voice/media/
 voice/customMedia/music.wav
 voice/customMedia/TestMusic1.mp3
 db.sqlite3
+*.mp3*.wav

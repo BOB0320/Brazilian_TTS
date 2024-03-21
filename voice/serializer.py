@@ -1,54 +1,35 @@
-from personal_sessions.models import Sessions
 from rest_framework import serializers
-from .apps import VoiceConfig
-from .models import VoiceModel, Status
-from personal_sessions.models import Sessions
-from backend.settings import BASE_DIR
+from pydub import AudioSegment
+from .apps import VoiceConfig, PreprocessText
 import os
+from backend.settings import BASE_DIR
 from django.core.files.base import ContentFile
 import io
 from scipy.io.wavfile import write
 from datetime import datetime
 import librosa
-import json
+import uuid
+from .textsplitter import TextSplitter
+import numpy as np
+import soundfile as sf
 
 
-class VoiceSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = VoiceModel
-        fields = '__all__'
+class MyAPISerializer(serializers.Serializer):
+    text = serializers.CharField(help_text='Your text goes here')
+class VoiceSerializer(serializers.Serializer):
 
-    def create(self, validated_data):
+    def create(self, text):
         try:
-            session_id = validated_data.get("session_id")
-
-            if isinstance(session_id, Sessions):
-                session_id = session_id.pk
-
-            if not Sessions.objects.filter(pk=session_id).exists():
-                raise serializers.ValidationError("Invalid session_id")
-
-            session = Sessions.objects.get(pk=session_id).session_generated_text
-            wav_file_name = os.path.join("media", f"{session_id}" + '.wav')
-
-            if os.path.exists(wav_file_name):
-                audio,sample_rate = librosa.load(wav_file_name, sr=None)
-            else:
-                # Make the API request
-                audio, sample_rate = VoiceConfig.convertTextToSpeectAndCombine.combine(session,
-                                                                                    os.path.join(BASE_DIR, "voice",
-                                                                                                    "customMedia", "TestMusic1.wav"))
-
-            output_file = io.BytesIO()
-            write(output_file, sample_rate, audio.T)
-            output_content = output_file.getvalue()
-            voice_model = VoiceModel.objects.create(**validated_data)
-
-            voice_model.voice.save(wav_file_name, ContentFile(output_content, name=wav_file_name))
-            voice_model.save()
-
-            validated_data["voice"] = voice_model.voice.path
-
-            return voice_model
+            text_splitter = TextSplitter()
+            processed_chunks  = text_splitter.process(text)
+            for idx, section in enumerate(processed_chunks):
+                print(f"Section {idx+1}:")
+                print(section)
+                print("------")
+            
+            output_file = VoiceConfig.convertTextToSpeectAndCombine.combine(processed_chunks)
+            output_file_full_path = os.path.join(BASE_DIR, output_file)
+            print("output_filepath",output_file_full_path)    
+            return output_file_full_path
         except Exception as e:
             print("serializeer error===>",e)

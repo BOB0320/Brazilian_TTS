@@ -1,47 +1,22 @@
-from django.apps import AppConfig
 import re
 import os
-from openai import OpenAI
-from django.conf import settings
-import librosa
 import io
+from io import BytesIO
+import requests
+import librosa
 import numpy as np
-
-
+import soundfile as sf
+import concurrent.futures
+from openai import OpenAI
+from django.apps import AppConfig
+from django.conf import settings
+from pydub import AudioSegment
+import uuid
 class CONFIG:
+    
     # load the environment
     # Set up the client
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
-
-
-class PreprocessText():
-    def __init__(self,nums_stops_inside_paragraph = 3,nums_stops_end_paragraph = 4):
-        self.nums_stops_inside_paragraph = nums_stops_inside_paragraph
-        self.nums_stops_end_paragraph = nums_stops_end_paragraph
-
-    def process(self,text):
-        processes = [self._handleCommas,self._handleFullStops]
-        for process in processes:
-            text = process(text)
-        return text
-
-    def _handleFullStops(self,text):
-
-        # handle the full stops inside the paragraph
-        pattern = r"([^.])(\.)([^\n\.])"
-        replacement = " [pause]." * self.nums_stops_inside_paragraph
-        text = re.sub(pattern,r'\1' + replacement + r'\3', text)
-
-
-        # handle the full stops at the end of the paragraph
-        pattern = r"([^.])(\.)([\n])"
-        replacement = " [pause]." * self.nums_stops_end_paragraph
-        text = re.sub(pattern,r'\1' + replacement + r'\3', text)
-
-        return text
-
-    def _handleCommas(self,text):
-        return text
 
 class ConvertTextToSpeech():
     '''
@@ -50,15 +25,79 @@ class ConvertTextToSpeech():
     def __init__(self):
         pass
 
+   
+    def call_api(self, text_chunk):
+        voice_id = settings.ELEVEN_VOICE_MODEL_ID
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        querystring = {"output_format": "mp3_22050_32"}
+        headers = {
+            "Accept": "audio/mp3",
+            "Content-Type": "application/json",
+            "xi-api-key": settings.ELEVEN_LABS_API_KEY
+        }
+        data = {
+            "text": text_chunk,
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.5
+            }
+        }
+
+        response = requests.post(url, json=data, headers=headers, params=querystring)
+        if response.status_code == 200:
+            return response.content
+        else:
+            response.raise_for_status()
+
+    def convert_using_elevenlabs(self, processed_chunks):
+        try:
+            audio_segments_with_index = []
+
+            # Call the API concurrently and store the audio segments along with their indices
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                # Submit tasks to the executor, storing the index and the task's future
+                futures_and_indices = [(executor.submit(self.call_api, chunk), i) for i, chunk in enumerate(processed_chunks)]
+
+                # Retrieve results as they complete
+                for future, index in futures_and_indices:
+                    try:
+                        # Get the audio content from the API response
+                        audio_content = future.result()
+                        # Store the audio content with the index to maintain order
+                        audio_segments_with_index.append((index, audio_content))
+                    except Exception as exc:
+                        print(f"An error occurred on chunk {index}: {exc}")
+
+            # Sort the audio segments by index to ensure they are in the correct order
+            audio_segments_with_index.sort(key=lambda x: x[0])
+
+            # Initialize an empty AudioSegment object
+            combined_audio = AudioSegment.empty()
+
+            # Concatenate the audio chunks in the correct order
+            for index, audio_content in audio_segments_with_index:
+                # Wrap the binary audio content in a BytesIO object
+                audio_buffer = BytesIO(audio_content)
+                # Parse the BytesIO object using AudioSegment
+                audio_segment = AudioSegment.from_file(audio_buffer, format="mp3")
+                # Concatenate audio segments
+                combined_audio += audio_segment
+            # After combining all chunks, export the result to a single MP3 file
+            output_file = "output" + str(uuid.uuid4()) + ".mp3"
+            combined_audio.export(output_file, format="mp3")
+           
+
+            return output_file
+        except Exception as e:
+            print("convert error:", e)
+
     def convert(self,text):
-        # Make the api call to get the response
-        speech_file_path = os.path.join(os.path.abspath('') ,"speech.mp3")
         response = CONFIG.client.audio.speech.create(
                     model="tts-1-hd",
                     voice="onyx",
                     input= text
                 )
-
+        
         audio_bytes = response.response.iter_bytes()
         audio_io = io.BytesIO(b''.join(audio_bytes))
 
@@ -74,39 +113,12 @@ class ConvertTextToSpeechAndCombine():
         self.music_weightage = music_weightage
 
 
-    def combine(self,text,music_file_path = None):
-        # Convert from text to speech
-        speech, speech_sampe_rate = self.convertTextToSpeech.convert(text)
-
-        if music_file_path is None:
-            return speech, speech_sampe_rate
-
-        # load the music file
-        music, music_sample_rate = librosa.load(music_file_path, sr=None)
-
-        # Check if sampling rates match, if not, resample one of the files
-        if speech_sampe_rate != music_sample_rate:
-            music = librosa.resample(music,  orig_sr=music_sample_rate, target_sr=speech_sampe_rate)
-            music_sample_rate = speech_sampe_rate
-
-        number_of_loops = (len(speech) // len(music)) + 1
-        music = np.array(list(music) * number_of_loops)
-
-        # # Take th minimum of the length
-        min_len = min(len(speech), len(music))
-        speech = speech[:min_len]
-        music = music[:min_len]
-
-        # Combine the audio arrays
-        y_combined = self.speech_weightage * speech + self.music_weightage * music
-
-
-        return y_combined, speech_sampe_rate
-
-    # def convertIntoAudioFile(self,combined_audio,sample_rate,file_name):
-    #     # Save
-    #     sf.write(file_name,combined_audio.T,sample_rate)
-
+    def combine(self, chunks):
+        try:
+            output_file = self.convertTextToSpeech.convert_using_elevenlabs(chunks)
+            return output_file
+        except Exception as e:
+            print("combine error:", e)
 
 
 class VoiceConfig(AppConfig):
