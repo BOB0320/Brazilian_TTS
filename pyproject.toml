@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "mastery-backend"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+packages = [{include = "mastery_backend"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+django = "^5.0.3"
+django-rest-swagger = "^2.2.0"
+drf-yasg = "^1.21.7"
+pyjwt = "2.7.0"
+cryptography = "^42.0.5"
+pandas = "^2.2.1"
+librosa = "^0.10.1"
+python-dotenv = "^1.0.1"
+langchain-core = "^0.1.31"
+django-cors-headers = "^4.3.1"
+rest-framework-simplejwt = "^0.0.2"
+djangorestframework-simplejwt = "^5.3.1"
+langchain-openai = "0.0.6"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
