@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from pydub import AudioSegment
-from .apps import VoiceConfig, PreprocessText
+from .apps import VoiceConfig
 import os
 from backend.settings import BASE_DIR
 from django.core.files.base import ContentFile
