@@ -38,10 +38,12 @@ class ConvertTextToSpeech():
             "xi-api-key": settings.ELEVEN_LABS_API_KEY
         }
         data = {
+            "model_id": "eleven_multilingual_v2",
             "text": text_chunk,
             "voice_settings": {
                 "stability": 0.5,
-                "similarity_boost": 0.5
+                "similarity_boost": 0.5,
+                "use_speaker_boost": True
             }
         }
 
