@@ -12,22 +12,24 @@ from django.apps import AppConfig
 from django.conf import settings
 from pydub import AudioSegment
 import uuid
+
+
 class CONFIG:
-    
     # load the environment
     # Set up the client
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
 
 class ConvertTextToSpeech():
     '''
     Convert the text to speech using the openai api
     '''
+
     def __init__(self):
         pass
 
-   
-    def call_api(self, text_chunk):
-        voice_id = settings.ELEVEN_VOICE_MODEL_ID
+    def call_api(self, text_chunk, voice_id):
+        # voice_id = settings.ELEVEN_VOICE_MODEL_ID
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         querystring = {"output_format": "mp3_22050_32"}
         headers = {
@@ -49,14 +51,15 @@ class ConvertTextToSpeech():
         else:
             response.raise_for_status()
 
-    def convert_using_elevenlabs(self, processed_chunks):
+    def convert_using_elevenlabs(self, processed_chunks, voice_id):
         try:
             audio_segments_with_index = []
 
             # Call the API concurrently and store the audio segments along with their indices
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 # Submit tasks to the executor, storing the index and the task's future
-                futures_and_indices = [(executor.submit(self.call_api, chunk), i) for i, chunk in enumerate(processed_chunks)]
+                futures_and_indices = [(executor.submit(self.call_api, chunk, voice_id), i) for i, chunk in
+                                       enumerate(processed_chunks)]
 
                 # Retrieve results as they complete
                 for future, index in futures_and_indices:
@@ -85,37 +88,36 @@ class ConvertTextToSpeech():
             # After combining all chunks, export the result to a single MP3 file
             output_file = "output" + str(uuid.uuid4()) + ".mp3"
             combined_audio.export(output_file, format="mp3")
-           
 
             return output_file
         except Exception as e:
             print("convert error:", e)
 
-    def convert(self,text):
+    def convert(self, text):
         response = CONFIG.client.audio.speech.create(
-                    model="tts-1-hd",
-                    voice="onyx",
-                    input= text
-                )
-        
+            model="tts-1-hd",
+            voice="onyx",
+            input=text
+        )
+
         audio_bytes = response.response.iter_bytes()
         audio_io = io.BytesIO(b''.join(audio_bytes))
 
         speech, sample_rate = librosa.load(audio_io, sr=None)
 
-        return speech,sample_rate
+        return speech, sample_rate
+
 
 class ConvertTextToSpeechAndCombine():
 
     def __init__(self, speech_weightage, music_weightage):
-        self.convertTextToSpeech  = ConvertTextToSpeech()
+        self.convertTextToSpeech = ConvertTextToSpeech()
         self.speech_weightage = speech_weightage
         self.music_weightage = music_weightage
 
-
-    def combine(self, chunks):
+    def combine(self, chunks, voice_id):
         try:
-            output_file = self.convertTextToSpeech.convert_using_elevenlabs(chunks)
+            output_file = self.convertTextToSpeech.convert_using_elevenlabs(chunks, voice_id)
             return output_file
         except Exception as e:
             print("combine error:", e)
@@ -124,4 +126,4 @@ class ConvertTextToSpeechAndCombine():
 class VoiceConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'voice'
-    convertTextToSpeectAndCombine = ConvertTextToSpeechAndCombine(speech_weightage=0.8,music_weightage=0.12)
+    convertTextToSpeectAndCombine = ConvertTextToSpeechAndCombine(speech_weightage=0.8, music_weightage=0.12)
