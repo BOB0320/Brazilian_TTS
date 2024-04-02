@@ -26,9 +26,9 @@ router.register(r"users", views.UserViewSet)
 
 schema_view = get_schema_view(
     openapi.Info(
-        title="Mastery API",
+        title="TTS API",
         default_version='v1',
-        description="Welcome to the world of Mastery",
+        description="Welcome to the world of TTS",
         terms_of_service="",
         contact=openapi.Contact(email="smt.dev0502@gmail.com"),
         license=openapi.License(name="Awesome IP"),
